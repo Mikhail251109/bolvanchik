@@ -2,8 +2,8 @@ import telebot
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
+from database import init_db, save_story
 
-# загружаем .env
 load_dotenv()
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -15,11 +15,19 @@ if not BOT_TOKEN:
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY not found in .env")
 
+
 bot = telebot.TeleBot(BOT_TOKEN)
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 
+init_db()
+print("База данных инициализирована")
+
+
 def generate_story(prompt: str) -> str:
+    """
+    Генерация истории через OpenAI
+    """
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -34,18 +42,37 @@ def generate_story(prompt: str) -> str:
 def start(message):
     bot.send_message(
         message.chat.id,
-        "Привет! ✨\nНапиши тему или жанр — я сгенерирую историю."
+        "Привет! ✨\n"
+        "Напиши тему или жанр — я сгенерирую историю.\n\n"
+        "Пример:\n"
+        "👉 Фэнтези про дракона и мага"
     )
 
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
+    bot.send_message(message.chat.id, "Генерирую историю... ⏳")
+
     try:
-        bot.send_message(message.chat.id, "Генерирую историю...")
-        story = generate_story(message.text)
+        prompt = message.text
+        story = generate_story(prompt)
+
+        # Сохраняем в базу данных
+        save_story(
+            user_id=message.from_user.id,
+            username=message.from_user.username,
+            prompt=prompt,
+            story=story
+        )
+
         bot.send_message(message.chat.id, story)
+
     except Exception as e:
-        bot.send_message(message.chat.id, f"Ошибка: {e}")
+        print("Ошибка:", e)
+        bot.send_message(
+            message.chat.id,
+            "❌ Произошла ошибка при генерации истории. Попробуй позже."
+        )
 
 
 print("Бот запущен. Нажми Ctrl+C для остановки.")
